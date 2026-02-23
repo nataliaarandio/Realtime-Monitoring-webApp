@@ -23,7 +23,7 @@ from random import randint
 from .models import City, Country, Data, Location, Measurement, Role, State, Station, User
 from realtimeMonitoring import settings
 import dateutil.relativedelta
-from django.db.models import Avg, Max, Min, Sum
+from django.db.models import Avg, Max, Min, Sum, OuterRef, Subquery
 
 
 class DashboardView(TemplateView):
@@ -673,3 +673,35 @@ Filtro para formatear datos en los templates
 @ register.filter
 def add_str(str1, str2):
     return str1 + str2
+
+
+class ActiveStationsTemperatureView(TemplateView):
+    '''
+    Endpoint que devuelve las estaciones activas y su último valor de temperatura registrado.
+    '''
+    def get(self, request, **kwargs):
+        try:
+            # Subconsulta para obtener el último valor de temperatura para una estación específica
+            latest_temp = Data.objects.filter(
+                station=OuterRef('pk'),
+                measurement__name='Temperatura'
+            ).order_by('-time').values('value')[:1]
+
+            # Filtrar estaciones activas y anotar con el último valor obtenido de la subconsulta
+            stations = Station.objects.filter(active=True).annotate(
+                last_temperature=Subquery(latest_temp)
+            ).values(
+                'user__login',
+                'location__city__name',
+                'location__state__name',
+                'location__country__name',
+                'last_temperature'
+            )
+
+            data = list(stations)
+            # Opcional: Filtrar estaciones que no tienen datos de temperatura si se desea
+            # data = [s for s in data if s['last_temperature'] is not None]
+
+            return JsonResponse(data, safe=False)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
