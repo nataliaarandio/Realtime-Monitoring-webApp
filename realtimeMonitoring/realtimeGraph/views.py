@@ -770,3 +770,62 @@ Filtro para formatear datos en los templates
 @register.filter
 def add_str(str1, str2):
     return str1 + str2
+
+
+class ActiveStationsTemperatureView(TemplateView):
+    """
+    Devuelve estaciones activas con el último valor de temperatura
+    en el mismo formato que PostgreSQL.
+    """
+
+    def get(self, request, **kwargs):
+
+        try:
+
+            measurement = Measurement.objects.get(name="Temperatura")
+
+            stations = Station.objects.filter(active=True)
+
+            data = []
+
+            for station in stations:
+
+                last_data = Data.objects.filter(
+
+                    station=station,
+                    measurement=measurement
+
+                ).order_by('-base_time').first()
+
+
+                last_temperature = None
+
+                if last_data and last_data.values:
+
+                    last_temperature = last_data.values[-1]
+
+
+                data.append({
+
+                    "user__login": station.user.login,
+
+                    "location__city__name": station.location.city.name,
+
+                    "location__state__name": station.location.state.name,
+
+                    "location__country__name": station.location.country.name,
+
+                    "last_temperature": last_temperature
+
+                })
+
+
+            return JsonResponse(data, safe=False)
+
+
+        except Exception as e:
+
+            return JsonResponse(
+                {"error": str(e)},
+                status=500
+            )
